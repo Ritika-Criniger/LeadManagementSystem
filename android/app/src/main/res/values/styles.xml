@@ -1,0 +1,11 @@
+<resources>
+    <!-- Base application theme. -->
+    <style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <!-- EditText background -->
+        <item name="android:editTextBackground">@drawable/rn_edit_text_material</item>
+
+        <!-- Accent color for pickers, checkboxes, etc. -->
+        <item name="colorAccent">#9c27b0</item> <!-- Purple -->
+        <item name="colorControlActivated">#9c27b0</item> <!-- For switches, tick marks -->
+    </style>
+</resources>
