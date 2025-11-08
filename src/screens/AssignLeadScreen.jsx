@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,8 @@ import {
   Platform,
   Dimensions,
   StatusBar,
+  PermissionsAndroid,
+  ActivityIndicator,
 } from 'react-native';
 
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -18,6 +20,7 @@ import Header from '../app/components/Header.jsx';
 import BottomBar from '../app/components/BottomBar.jsx';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import Voice from '@react-native-voice/voice';
 
 const { width } = Dimensions.get('window');
 
@@ -51,6 +54,10 @@ const AssignLeadScreen = ({ navigation, route }) => {
   const [showRmList, setShowRmList] = useState(false);
   const [showPriorityList, setShowPriorityList] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Voice-to-Text States
+  const [isRecording, setIsRecording] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   // Dummy RM options
   const rmOptions = [
@@ -61,6 +68,113 @@ const AssignLeadScreen = ({ navigation, route }) => {
   ];
 
   const priorityOptions = ['Hot', 'Warm', 'Cold'];
+
+  // Voice Recognition Setup
+  useEffect(() => {
+    Voice.onSpeechStart = onSpeechStart;
+    Voice.onSpeechEnd = onSpeechEnd;
+    Voice.onSpeechResults = onSpeechResults;
+    Voice.onSpeechError = onSpeechError;
+
+    return () => {
+      Voice.destroy().then(Voice.removeAllListeners);
+    };
+  }, []);
+
+  const onSpeechStart = (e) => {
+    console.log('Speech started', e);
+    setIsRecording(true);
+  };
+
+  const onSpeechEnd = (e) => {
+    console.log('Speech ended', e);
+    setIsRecording(false);
+    setIsProcessing(false);
+  };
+
+  const onSpeechResults = (e) => {
+    console.log('Speech results', e);
+    if (e.value && e.value.length > 0) {
+      const spokenText = e.value[0];
+      // Append to existing remark
+      setAssignData(prevState => ({
+        ...prevState,
+        remark: prevState.remark ? `${prevState.remark} ${spokenText}` : spokenText,
+      }));
+    }
+  };
+
+  const onSpeechError = (e) => {
+    console.log('Speech error', e);
+    setIsRecording(false);
+    setIsProcessing(false);
+    Alert.alert('Error', 'Could not recognize speech. Please try again.');
+  };
+
+  // Request Microphone Permission (Android)
+  const requestMicrophonePermission = async () => {
+    if (Platform.OS === 'android') {
+      try {
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+          {
+            title: 'Microphone Permission',
+            message: 'This app needs access to your microphone for voice input.',
+            buttonNeutral: 'Ask Me Later',
+            buttonNegative: 'Cancel',
+            buttonPositive: 'OK',
+          }
+        );
+        return granted === PermissionsAndroid.RESULTS.GRANTED;
+      } catch (err) {
+        console.warn(err);
+        return false;
+      }
+    }
+    return true; // iOS handles permission automatically
+  };
+
+  // Start Voice Recording
+  const startVoiceRecording = async () => {
+    const hasPermission = await requestMicrophonePermission();
+    
+    if (!hasPermission) {
+      Alert.alert(
+        'Permission Required',
+        'Please grant microphone permission to use voice input.'
+      );
+      return;
+    }
+
+    try {
+      setIsProcessing(true);
+      await Voice.start('en-US'); // You can change to 'hi-IN' for Hindi
+    } catch (e) {
+      console.error('Error starting voice recognition', e);
+      setIsProcessing(false);
+      Alert.alert('Error', 'Failed to start voice recognition. Please try again.');
+    }
+  };
+
+  // Stop Voice Recording
+  const stopVoiceRecording = async () => {
+    try {
+      await Voice.stop();
+      setIsRecording(false);
+      setIsProcessing(false);
+    } catch (e) {
+      console.error('Error stopping voice recognition', e);
+    }
+  };
+
+  // Toggle Voice Recording
+  const toggleVoiceRecording = () => {
+    if (isRecording) {
+      stopVoiceRecording();
+    } else {
+      startVoiceRecording();
+    }
+  };
 
   const formatDate = (date) => {
     if (!date) return '';
@@ -139,25 +253,24 @@ const AssignLeadScreen = ({ navigation, route }) => {
     <View style={styles.progressContainer}>
       <View style={styles.progressWrapper}>
         <View style={styles.progressStep}>
-  <LinearGradient
-    colors={['#ff9800', '#ff5722']}          // orange gradient
-    start={{ x: 0, y: 0 }}
-    end={{ x: 1, y: 0 }}
-    style={[styles.stepCircle, styles.completedStepGradient]}
-  >
-    <Icon name="person-add" size={moderateScale(18)} color="#fff" />
-  </LinearGradient>
-  <Text style={[styles.stepText, styles.completedStepText]}>New Lead</Text>
-</View>
-
+          <LinearGradient
+            colors={['#ff9800', '#ff5722']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={[styles.stepCircle, styles.completedStepGradient]}
+          >
+            <Icon name="person-add" size={moderateScale(18)} color="#fff" />
+          </LinearGradient>
+          <Text style={[styles.stepText, styles.completedStepText]}>New Lead</Text>
+        </View>
         
         <View style={[styles.progressLine, styles.activeLine]} />
         
         <View style={styles.progressStep}>
           <LinearGradient
-                      colors={['#9c27b0', '#64b5f6']}
-                      style={[styles.stepCircle, styles.activeStep]}
-                    >
+            colors={['#9c27b0', '#64b5f6']}
+            style={[styles.stepCircle, styles.activeStep]}
+          >
             <Icon name="assignment-ind" size={moderateScale(18)} color="#fff" />
           </LinearGradient>
           <Text style={[styles.stepText, styles.activeStepText]}>Assign Lead</Text>
@@ -167,9 +280,9 @@ const AssignLeadScreen = ({ navigation, route }) => {
         
         <View style={styles.progressStep}>
           <LinearGradient
-                      colors={['#9c27b0', '#64b5f6']}
-                      style={[styles.stepCircle, styles.activeStep]}
-                    >
+            colors={['#9c27b0', '#64b5f6']}
+            style={[styles.stepCircle, styles.activeStep]}
+          >
             <Icon name="check-circle" size={moderateScale(18)} color="#fff" />
           </LinearGradient>
           <Text style={styles.stepText}>Status</Text>
@@ -281,15 +394,44 @@ const AssignLeadScreen = ({ navigation, route }) => {
             </View>
           )}
 
-          {/* Remark - FIXED: Removed bottom border */}
+          {/* Remark with Voice Input */}
           <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>
-              Remark
-              <Text style={styles.asterisk}> *</Text>
-            </Text>
+            <View style={styles.remarkHeader}>
+              <Text style={styles.inputLabel}>
+                Remark
+                <Text style={styles.asterisk}> *</Text>
+              </Text>
+              <TouchableOpacity 
+                style={[
+                  styles.micButton,
+                  isRecording && styles.micButtonActive,
+                  isProcessing && styles.micButtonProcessing
+                ]}
+                onPress={toggleVoiceRecording}
+                disabled={isProcessing && !isRecording}
+              >
+                {isProcessing && !isRecording ? (
+                  <ActivityIndicator size="small" color="#9c27b0" />
+                ) : (
+                  <Icon 
+                    name={isRecording ? "mic" : "mic-none"} 
+                    size={moderateScale(24)} 
+                    color={isRecording ? "#fff" : "#9c27b0"} 
+                  />
+                )}
+              </TouchableOpacity>
+            </View>
+            
+            {isRecording && (
+              <View style={styles.recordingIndicator}>
+                <View style={styles.recordingDot} />
+                <Text style={styles.recordingText}>Listening...</Text>
+              </View>
+            )}
+            
             <TextInput
               style={styles.textAreaInput}
-              placeholder="Enter your remark"
+              placeholder="Enter your remark or use voice input"
               value={assignData.remark}
               onChangeText={(value) => handleInputChange('remark', value)}
               multiline
@@ -307,14 +449,13 @@ const AssignLeadScreen = ({ navigation, route }) => {
               disabled={isLoading}
             >
               <LinearGradient
-  colors={['#9c27b0', '#64b5f6']}
-  start={{ x: 0, y: 0.5 }}   // start from left
-  end={{ x: 1, y: 0.5 }}     // end at right
-  style={styles.gradientButton}
->
-  <Text style={styles.buttonText}>Previous</Text>
-</LinearGradient>
-
+                colors={['#9c27b0', '#64b5f6']}
+                start={{ x: 0, y: 0.5 }}
+                end={{ x: 1, y: 0.5 }}
+                style={styles.gradientButton}
+              >
+                <Text style={styles.buttonText}>Previous</Text>
+              </LinearGradient>
             </TouchableOpacity>
 
             <TouchableOpacity 
@@ -336,18 +477,17 @@ const AssignLeadScreen = ({ navigation, route }) => {
               disabled={isLoading}
             >
               <LinearGradient
-  colors={isLoading ? ['#ccc', '#999'] : ['#9c27b0', '#64b5f6']}
-  start={{ x: 0, y: 0.5 }}   // start from left
-  end={{ x: 1, y: 0.5 }}     // end at right
-  style={styles.gradientButton}
->
-  {isLoading ? (
-    <Text style={styles.buttonText}>Loading...</Text>
-  ) : (
-    <Text style={styles.buttonText}>Save</Text>
-  )}
-</LinearGradient>
-
+                colors={isLoading ? ['#ccc', '#999'] : ['#9c27b0', '#64b5f6']}
+                start={{ x: 0, y: 0.5 }}
+                end={{ x: 1, y: 0.5 }}
+                style={styles.gradientButton}
+              >
+                {isLoading ? (
+                  <Text style={styles.buttonText}>Loading...</Text>
+                ) : (
+                  <Text style={styles.buttonText}>Save</Text>
+                )}
+              </LinearGradient>
             </TouchableOpacity>
           </View>
         </View>
@@ -547,14 +687,60 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(16),
     color: '#333',
   },
-  textInput: { 
-    fontSize: moderateScale(16), 
-    color: '#333',
-    borderBottomWidth: 2,
-    borderBottomColor: '#9c27b0',
-    paddingVertical: scale(12),
+  // Remark with Voice Input Styles
+  remarkHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: scale(8),
   },
-  // FIXED: New style for textarea without bottom border
+  micButton: {
+    width: scale(44),
+    height: scale(44),
+    borderRadius: scale(22),
+    backgroundColor: '#f0f0f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+  },
+  micButtonActive: {
+    backgroundColor: '#9c27b0',
+    elevation: 4,
+    shadowColor: '#9c27b0',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+  },
+  micButtonProcessing: {
+    backgroundColor: '#e0e0e0',
+  },
+  recordingIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff3e0',
+    paddingHorizontal: scale(12),
+    paddingVertical: scale(8),
+    borderRadius: scale(8),
+    marginBottom: scale(8),
+    borderWidth: 1,
+    borderColor: '#ff9800',
+  },
+  recordingDot: {
+    width: scale(8),
+    height: scale(8),
+    borderRadius: scale(4),
+    backgroundColor: '#f44336',
+    marginRight: scale(8),
+  },
+  recordingText: {
+    fontSize: moderateScale(14),
+    color: '#ff9800',
+    fontWeight: '600',
+  },
   textAreaInput: {
     fontSize: moderateScale(16),
     color: '#333',
